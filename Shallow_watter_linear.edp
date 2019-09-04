@@ -1,0 +1,108 @@
+include "ffmatlib.idp"
+
+//Save mesh
+verbosity=0;
+
+//Leyendo la malla de la costa
+mesh Thaux=readmesh("data_output/malla.msh");
+
+
+
+//Leyendo la topografia
+fespace Vhfemp(Thaux,P1);
+Vhfemp bathaux,bathaux2,zzero ;
+ifstream topi("data_output/Topogra.txt"); 
+  topi >> bathaux[];
+  bathaux2 =bathaux;
+////////////////////////////////
+
+
+//bathaux = min(bathaux,0.0);
+real minumbath = bathaux[].min;
+bathaux = bathaux - minumbath;
+real maxubath = bathaux[].max;
+bathaux = 1.0 + bathaux/maxubath;
+real sealevel = - minumbath/maxubath +  1.0;
+zzero = sealevel;
+//plot(zzero,bathaux,fill=1,dim=3,wait=1,cmm="The new mesh");
+real[int] bb(4);
+ // bb[0] = xmin, bb[1] = xmax, bb[2] = ymin, bb[3] =ymax
+ boundingbox(Thaux, bb);
+
+mesh Th = movemesh(Thaux, [x-bb[0], y-bb[2]]);
+fespace Vh(Th,P1);
+ffSaveVh(Th,Vh,"data_output/fem_vh.txt");
+Vh bath=bathaux(x+bb[0], y+bb[2]);
+maxubath = bath[].max;
+
+boundingbox(Th, bb);
+
+//plot(bath,fill=1,dim=3,wait=1,cmm="The new mesh");
+//Th = adaptmesh(Th,hmin=0.005,hmax=0.01,nbvx=10000);
+//plot(Th,wait=1,cmm="The new mesh");
+
+real[int] colorhsv=[ // Color hsv model
+    1, 1. , 1 ,// Red
+    1, 0.5 , 1, // Light red
+    4./6., 1 , 0.5
+    ];
+
+
+func  newlabel = ( label == 1 && x < 0.0001 ) ? 4 : label; 
+
+Th = change(Th,flabel=1);
+Th = change(Th,flabel=newlabel);
+
+		 
+func g=0.;
+real c=0.8,dt=.01,Tf=7.;
+Vh uh,vh;
+Vh uh0=sealevel+1.0;//*(bath<sealevel) + (bath+drywater)*(bath>=sealevel);
+Vh uh1=uh0+dt*g;
+Vh Pressure=-0.00005*exp(-15*((y-(bb[2]+bb[3])/2)^2 + (x-bb[0])^2));
+Vh Bombeo ;
+Vh uhplot;
+Vh Femsealevel = sealevel;
+macro dn(u) (N.x*dx(u)+N.y*dy(u) ) //  def the normal derivative 
+macro Grad(u) [dx(u),dy(u)]//
+real theta = 1-1.0/4.0;
+problem tambour(uh,vh,init=1) = int2d(Th)(uh*vh + bath*Grad(uh)'*Grad(vh)*(c*dt)^2*(theta) )
+                    + int2d(Th)(bath*Grad(uh0)'*Grad(vh)*(c*dt)^2*(1-theta) ) 
+                    - int2d(Th)(2.*uh1*vh - uh0*vh)
+                    + int2d(Th)(Grad(Pressure)'*Grad(vh))
+                    + int1d(Th,1)((c)^2*dt*uh*vh)
+                    - int1d(Th,1)((c)^2*dt*uh1*vh)
+                    +on(4,uh=Bombeo)
+					;
+ ffSaveData(bath,"data_output/batimetria.txt");
+int i =0;				
+for (real t=0.;t<Tf;t+=dt) {
+  Bombeo = sealevel + 0.005*sin(5.0*pi*t);
+  Pressure = 0.0;//Pressure*exp(-10.0*t^2);
+  tambour;
+  uh = max(uh,bath)*(bath<sealevel) + uh*(bath>=sealevel);
+  uh1 = max(uh1,bath)*(bath<sealevel) + uh1*(bath>=sealevel);
+  uh0 = uh1;
+  uh1 = uh;
+  uhplot = uh*(bath<sealevel) + (bath+abs(uh-sealevel))*(bath>=sealevel); 
+  Vh bathx = 0.000001*dx(bath);
+  Vh bathy = 0.000001*dy(bath);
+  //mesh Thaux = adaptmesh(Th,[bathx,bathy]);
+  //Thaux = movemesh(Th,[bathx,bathy]);
+  ffSaveData(uhplot,"data_output/Tsunami_wave_" + i +".txt");
+  i++;
+  plot(uhplot,bath,cmm="t="+t,fill=true,value=true,wait=0,dim=3,boundary=false,hsv=colorhsv); 
+}
+
+
+
+
+/*
+   int NbBoundaryElements = Th.nbe;
+    for (int k = 0; k < NbBoundaryElements; k++){
+        cout << k << " : " << Th.be(k)[0] << " " << Th.be(k)[1]
+             << " , label " << Th.be(k).label
+             << ", triangle " << int(Th.be(k).Element)
+             << " " << Th.be(k).whoinElement << endl;
+}
+plot(Th,wait=1);*/

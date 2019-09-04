@@ -1,0 +1,1 @@
+https://gis.ngdc.noaa.gov/cgi-bin/public/wcs/etopo1_bedrock.xyz?filename=etopo1_bedrock.xyz&request=getcoverage&version=1.0.0&service=wcs&coverage=etopo1_bedrock&CRS=EPSG:4326&format=xyz&resx=0.016666666666666667&resy=0.016666666666666667&bbox=-107.5750000000000021515,19.5750000000000003915,-104.2583333333333354185,21.1583333333333337565

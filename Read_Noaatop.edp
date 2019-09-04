@@ -1,0 +1,72 @@
+include "ffmatlib.idp"
+
+string filename="Puerto_vallarta.xyz";	// Nombre del archivo de la topografia
+
+mesh Sh; //mala de la topografia
+
+//comando para triangular
+Sh=triangulate(filename);
+
+//Leyendo la topografia
+fespace Vh(Sh,P1);
+Vh Topografia;// The level-set function
+{ ifstream file(filename);
+			real xx,yy;for(int i=0;i<Topografia.n;i++)file >> xx >>yy >> Topografia[][i]; }
+/////////////////////////////////////////////////////////////////////////////////////////////////
+		
+////////// Parametros para la topografia ///////////////
+real metricErr=0.007;			// Metric used for mesh adaptation
+real epsilon=0.08;		// the more epsilon is close to zero, the more u takes values equal to 1 and -1
+real alpha=10.;		// alpha set the balance between length of the curve and fitting the actual interface: the more alpha is big the closest is the better is the approximation
+bool output=true;		// para plotear cada iteracion del refinamiento de la malla
+real beta = 300;      //parametro de suavisamiento de la topografia final
+
+
+	Vh u,topoaux,du,v;
+	topoaux=(Topografia<=0)-(Topografia>0);
+
+	macro grad(u) [dx(u),dy(u)] //
+	
+	//problema para obtener la frontera de la costa
+	problem regularization(du,v)=
+			int2d(Sh)(2.*epsilon*(grad(du)'
+						*grad(v))+4.*(u)^2*du*v/epsilon +
+					alpha*du*v)
+			+int2d(Sh)(epsilon*(grad(u)'
+						*grad(v)) - 2.*(1.-u^2)*u*v/epsilon)
+			+int2d(Sh,qft=qf1pTlump)(alpha*(u-topoaux)*v);
+    
+    //Suavizamiento de la costa
+    problem smother(du,v)=
+			int2d(Sh)((grad(du)'
+						*grad(v))+
+					beta*du*v)
+			-int2d(Sh,qft=qf1pTlump)(beta*(Topografia)*v);
+			
+    
+	u=0;
+	mesh Th=Sh;
+
+	
+	for(int i=0;i<10;i++){
+		regularization;u=u+du;
+		Sh=adaptmesh(Th,u,err=metricErr,hmax=0.04,nbvx=100000);
+		if(output) plot(Sh,fill=1,wait=1,cmm="iteration="+i);
+		//if(output) plot(u,dim=3,fill=1,wait=1,cmm="iteration="+i);
+	}		
+	regularization;u=u+du;	
+
+
+	plot(Sh,dim=2,fill=1,wait=0,ps="Image/malla.eps");
+	plot(Sh,Topografia,dim=3,fill=1,value=1,ps="Image/topo.eps");
+Topografia = Topografia;
+ffSaveData(Topografia,"data_output/Topografia_noregular.txt");
+smother;
+
+Topografia=du;
+
+ofstream g("data_output/Topogra.txt"); g << Topografia[];
+savemesh(Sh,"data_output/malla.msh");
+
+ffSaveVh(Sh,Vh,"data_output/nooa_fem_vh.txt");
+ffSaveData(Topografia,"data_output/Topografia.txt");
